@@ -2,30 +2,37 @@
 - name: Check swapfile exists
   stat: path={{ swapfile_location }}
   register: swap_stat
-- set_fact: swap_size={{ (swap_stat.stat.size | int) / 1000 }}
+- set_fact: current_swap_size_kb={{ (swap_stat.stat.size | int) / 1024 }}
   when: swap_stat.stat.size is defined
 
 - name: Get remaining disk space
   shell: df . --output=avail | grep -vi avail
-  register: available_space
-- set_fact: available_space={{ available_space.stdout_lines[0] | int }}
+  register: available_space_kb
+- set_fact: available_space_kb={{ available_space_kb.stdout_lines[0] | int }}
+
+- name: Check swapfile_size has units
+  fail: msg="swapfile_size now requires units.  For example use 1024MB or 1GB instead of {{ swapfile_size }}"
+  when: "('' ~ swapfile_size)[-1] in ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']"
 
 - name: Convert requested space to kilobytes
-  command: numfmt --from=si --suffix=B --padding=7 {{ swapfile_size }}
-  register: requested_space
-- set_fact: requested_space={{ (requested_space.stdout_lines[0] | regex_replace('B', '') | int) / 1000}}
+  command: numfmt --from=auto --suffix=B --padding=7 {{ swapfile_size }}
+  register: requested_space_bytes
+- set_fact:
+    requested_space_kb: "{{ (requested_space_bytes.stdout_lines[0] | regex_replace('B', '') | int) / 1024 }}"
+- set_fact:
+    requested_space_mb: "{{ ((requested_space_kb | int) / 1024) | int }}"
 
 
 - name: Check requested size against remaining space and swap exists
-  fail: msg="{{requested_space}} bytes exceeds {{ (available_space|int) + (swap_size|int) }} bytes for swap creation."
-  when: swap_stat.stat.exists == true and (((available_space|int) + (swap_size|int) - (requested_space|int)) < 0)
+  fail: msg="{{ requested_space_kb }} kilobytes exceeds {{ (available_space_kb|int) + (current_swap_size_kb|int) }} kilobytes for swap creation."
+  when: swap_stat.stat.exists == true and (((available_space_kb|int) + (current_swap_size_kb|int) - (requested_space_kb|int)) < 0)
 
 - name: Check requested size against remaining space and swap does not exist
-  fail: msg="{{requested_space}} bytes exceeeds {{available_space}} bytes for swap creation."
-  when: swap_stat.stat.exists == false and (((available_space|int) - (requested_space|int)) < 0)
+  fail: msg="{{requested_space_kb}} kilobytes exceeeds {{available_space_kb}} kilobytes for swap creation."
+  when: swap_stat.stat.exists == false and (((available_space_kb|int) - (requested_space_kb|int)) < 0)
 
-- name: Check if significantly different
-  set_fact: significantly_different={{ swap_stat.stat.exists == true and (((requested_space|int) - (swap_size|int)) | abs) > 100000 }}
+- name: Check if requested swapsize and current swap size are significantly different
+  set_fact: significantly_different={{ swap_stat.stat.exists == true and (((requested_space_kb|int) - (current_swap_size_kb|int)) | abs) > 10240 }}
 
 
 - name: Turn swap off
@@ -43,9 +50,9 @@
 - name: Write swapfile
   command: |
     {% if swapfile_use_dd %}
-    dd if=/dev/zero of={{ swapfile_location }} bs=1M count={{ swapfile_size | regex_replace('MB', '') }} creates={{ swapfile_location }}
+    dd if=/dev/zero of={{ swapfile_location }} bs=1M count={{ requested_space_mb }} creates={{ swapfile_location }}
     {% else %}
-    fallocate -l {{ swapfile_size }} {{ swapfile_location }} creates={{ swapfile_location }}
+    fallocate -l {{ requested_space_mb + "MB" }} {{ swapfile_location }} creates={{ swapfile_location }}
     {% endif %}
   register: write_swapfile
   when: swapfile_size != false and swap_stat.stat.exists != true

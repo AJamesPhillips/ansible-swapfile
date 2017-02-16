@@ -13,9 +13,9 @@ None.
 
 * `swapfile_size` [default: `512MB`]: the size of the swapfile to create in the format that `fallocate` expects:
 
-    The  length and offset arguments may be followed by binary (2^N) suffixes KiB, MiB, GiB, TiB, PiB and EiB (the "iB" is optional, e.g. "K" has the same meaning as "KiB") or decimal (10^N) suffixes KB, MB, GB, PB and EB.
+    The length and offset arguments must be followed by suffixes K, KB, Ki, KiB, M, MB, Mi, MiB etc, which are equal to the following value in bytes: 1K and 1KB = 1000, 1Ki and 1KiB = 1024, 1M and 1MB = 1000000, 1Mi and 1MiB = 1048576
 
-    If `swapfile_use_dd` is set to True, `swapfile_size` must be set to the amount of megabytes to write, e.g. `512`.
+    If `swapfile_use_dd` is set to True, `swapfile_size` must still use suffixes MB, MiB, GB etc.  (Previously `swapfile_size` was required to be set to the amount of megabytes to write, e.g. `512`.  This is no longer the case and will result in an error.)
 
 * `swapfile_location` [default: `/swapfile`]: the location of where the swapfile will be created
 
